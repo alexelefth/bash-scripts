@@ -1,0 +1,8 @@
+[Service]
+ExecStart=/usr/libexec/tpm-key-check.sh start
+
+[Install]
+WantedBy=multi-user.target
+
+[Unit]
+After=tpm2-abrmd.service
