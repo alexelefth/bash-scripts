@@ -1,5 +1,5 @@
 [Service]
-ExecStart=/usr/libexec/tpm-key-check.sh start
+ExecStart=/usr/libexec/tpm-key-generation.sh start
 
 [Install]
 WantedBy=multi-user.target
