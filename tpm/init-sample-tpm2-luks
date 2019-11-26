@@ -1,0 +1,51 @@
+#boots to an encrypted luks rootfs partition with TPM2.0
+#assumes that if TPM is empty a default secret-key in boot partition must be used
+#default key deletion in boot partition and from luks keys is handled through a systemd service
+
+test -e /dev/tpm0
+TPM_PRESENT=$?
+
+if [ $TPM_PRESENT == 0 ];
+then
+  echo "tpm found, proceeding accordingly..." &> /dev/console
+  #decrypt and mount rootfs_occe
+	mkdir -p /key-dir
+	sleep 1
+	#mount boot partition
+	mount /dev/sda1 /key-dir
+  sleep 1
+	# Generate a key if this is the first time the system boots
+	echo "checking tpm for keys..." &> /dev/console
+	export TPM2TOOLS_TCTI="device:/dev/tpm0"
+	tpm2_listpersistent|grep persistent &>/dev/null
+	TPM2_PERS_STATUS=$?
+
+	if [ $TPM2_PERS_STATUS == 0 ];
+	then
+		TPM2_PERS_STATUS=0
+		echo "tpm persistent not empty" &> /dev/console
+		echo "trying to unseal key..." &> /dev/console
+		tpm2_unseal -Q -H 0x81020000 -o /key-dir/secret.key
+		sleep 1
+	else
+		echo "tpm persistent is empty trying to boot with default key..." &> /dev/console
+	fi
+	#decrypt rootfs in sda3 and map it to /dev/mapper/rootfs, covers both default and regular boot
+	cryptsetup luksOpen /dev/sda3 rootfs --key-file /key-dir/secret.key
+	sleep 1
+	if [ $TPM2_PERS_STATUS == 0 ];
+	then
+		echo "cleaning up tpm secret" &> /dev/console
+		rm -rf /key-dir/secret.key
+	fi
+
+	umount /key-dir
+	sleep 1
+	#mount rootfs locally or go to rescue shell
+  mount /dev/mapper/rootfs /rootfs || exec sh </dev/console >/dev/console 2>/dev/console
+	sleep 1
+	mount --move /sys /rootfs/sys
+  mount --move /dev /rootfs/dev
+  mount --move /proc /rootfs/proc
+	# switch to the unencrypted rootfs
+  exec switch_root /rootfs /sbin/init || exec sh </dev/console >/dev/console 2>/dev/console
